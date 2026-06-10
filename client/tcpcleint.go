@@ -14,10 +14,10 @@ func listenToServer(conn net.Conn) {
 
 		message, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Println("\n⚠️ Disconnected from broker server.", err)
+			fmt.Println("\n Disconnected from broker server.", err)
 			return
 		}
-		fmt.Printf("\n📩 New Message Received: %s", message)
+		fmt.Printf("\n New Message Received: %s", message)
 		fmt.Print("Enter command > ")
 	}
 }
