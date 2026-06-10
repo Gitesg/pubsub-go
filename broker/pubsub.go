@@ -37,9 +37,10 @@ func (ps *PubSub) Subscribe(topic string, conn net.Conn) chan string {
 func (ps *PubSub) Publisher(msg string, topic string) (code int, e error) {
 
 	ps.mu.Lock()
-	defer ps.mu.Unlock()
+	subs := append([]*Subscriber{}, ps.subscribers[topic]...)
+	ps.mu.Unlock()
 
-	subs := ps.subscribers[topic]
+	subs = ps.subscribers[topic]
 
 	if subs == nil {
 		return 404, errors.New("topic not found")
