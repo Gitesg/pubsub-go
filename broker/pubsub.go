@@ -1,7 +1,6 @@
 package pubsub
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -11,15 +10,56 @@ type Subscriber struct {
 	conn net.Conn
 	ch   chan string
 }
+
+type Message struct {
+	topic   string
+	message string
+}
 type PubSub struct {
 	subscribers map[string][]*Subscriber
 	mu          sync.Mutex
+	globalqueue chan Message
 }
 
 func NewPubSub() *PubSub {
-	return &PubSub{
+
+	ps := &PubSub{
 		subscribers: make(map[string][]*Subscriber),
+		mu:          sync.Mutex{},
+		globalqueue: make(chan Message, 100),
 	}
+	ps.Dispatcher(3)
+	return ps
+}
+
+func (ps *PubSub) Dispatcher(worker int) {
+	for i := 0; i < worker; i++ {
+		go func() {
+			for msg := range ps.globalqueue {
+
+				topic, mx := msg.topic, msg.message
+
+				ps.mu.Lock()
+				subs, ok := ps.subscribers[topic]
+				if !ok {
+					ps.mu.Unlock()
+					continue
+				}
+				cop1 := make([]*Subscriber, len(subs))
+				copy(cop1, subs)
+				ps.mu.Unlock()
+
+				for _, sub := range cop1 {
+					select {
+					case sub.ch <- mx:
+					default:
+						fmt.Println("slow subscriber, dropping")
+					}
+				}
+			}
+		}()
+	}
+
 }
 
 func (ps *PubSub) Subscribe(topic string, conn net.Conn) chan string {
@@ -36,25 +76,12 @@ func (ps *PubSub) Subscribe(topic string, conn net.Conn) chan string {
 
 func (ps *PubSub) Publisher(msg string, topic string) (code int, e error) {
 
-	ps.mu.Lock()
-	subs := append([]*Subscriber{}, ps.subscribers[topic]...)
-	ps.mu.Unlock()
-
-	subs = ps.subscribers[topic]
-
-	if subs == nil {
-		return 404, errors.New("topic not found")
+	select {
+	case ps.globalqueue <- Message{topic: topic, message: msg}:
+	default:
+		return 0, fmt.Errorf("mqeue is full")
 	}
 
-	fmt.Println(subs)
-
-	for _, i := range subs {
-		fmt.Printf("Publishing message to topic '%s': %s\n", topic, msg)
-		select {
-		case i.ch <- msg:
-		default:
-			fmt.Println("message dropped for topic:", topic)
-		}
-	}
 	return 200, nil
+
 }
